@@ -6,7 +6,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminUser, setAdminUser] = useState<any>(null);
 
-  if (isAuthenticated) {
+  if (!isAuthenticated) {
     return <Login onLogin={(user) => {
       setIsAuthenticated(true);
       setAdminUser(user);

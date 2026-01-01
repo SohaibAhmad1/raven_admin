@@ -68,7 +68,7 @@ export function Login({ onLogin }: { onLogin: (user: any) => void }) {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -80,7 +80,7 @@ export function Login({ onLogin }: { onLogin: (user: any) => void }) {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -91,7 +91,7 @@ export function Login({ onLogin }: { onLogin: (user: any) => void }) {
                 required
               />
             </div>
-            
+
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
