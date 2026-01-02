@@ -35,7 +35,7 @@ const menuItems = [
   { id: 'pricing' as AdminView, label: 'Pricing', icon: DollarSign },
   { id: 'payments' as AdminView, label: 'Payments', icon: CreditCard },
   { id: 'reports' as AdminView, label: 'Reports', icon: BarChart3 },
-  { id: 'promos' as AdminView, label: 'Promos', icon: Tag },
+  // { id: 'promos' as AdminView, label: 'Promos', icon: Tag },
   { id: 'disputes' as AdminView, label: 'Disputes', icon: AlertCircle },
   { id: 'settings' as AdminView, label: 'Settings', icon: Settings },
 ];
@@ -50,9 +50,8 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen bg-white border-r border-gray-200 transition-all duration-300 ${
-        collapsed ? 'w-16' : 'w-64'
-      }`}
+      className={`fixed left-0 top-0 h-screen bg-white border-r border-gray-200 transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'
+        }`}
     >
       <div className="flex flex-col h-full">
         {/* Header */}
@@ -88,9 +87,8 @@ export function Sidebar({
                 <Button
                   key={item.id}
                   variant={isActive ? 'secondary' : 'ghost'}
-                  className={`w-full justify-start ${collapsed ? 'px-2' : 'px-3'} ${
-                    isActive ? 'bg-indigo-50 text-indigo-600' : 'text-gray-700'
-                  }`}
+                  className={`w-full justify-start ${collapsed ? 'px-2' : 'px-3'} ${isActive ? 'bg-indigo-50 text-indigo-600' : 'text-gray-700'
+                    }`}
                   onClick={() => onViewChange(item.id)}
                   title={collapsed ? item.label : ''}
                 >
@@ -112,9 +110,8 @@ export function Sidebar({
           )}
           <Button
             variant="ghost"
-            className={`w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 ${
-              collapsed ? 'px-2' : 'px-3'
-            }`}
+            className={`w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 ${collapsed ? 'px-2' : 'px-3'
+              }`}
             onClick={onLogout}
             title={collapsed ? 'Logout' : ''}
           >

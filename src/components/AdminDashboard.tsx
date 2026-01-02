@@ -11,7 +11,7 @@ import { PromoManagement } from './dashboard/PromoManagement';
 import { DisputeManagement } from './dashboard/DisputeManagement';
 import { SystemConfiguration } from './dashboard/SystemConfiguration';
 
-export type AdminView = 
+export type AdminView =
   | 'overview'
   | 'users'
   | 'riders'
