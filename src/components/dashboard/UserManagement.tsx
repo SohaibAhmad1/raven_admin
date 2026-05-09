@@ -78,7 +78,7 @@ export function UserManagement() {
       setLoading(true);
       setError('');
       const data = await getUsers();
-      setUsers(data.users);
+      setUsers(data.users.filter((user) => user.role !== 'rider'));
     } catch (err: unknown) {
       setError(formatApiError(err));
     } finally {
@@ -335,4 +335,3 @@ export function UserManagement() {
     </div>
   );
 }
-
