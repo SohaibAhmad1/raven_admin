@@ -5,9 +5,15 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Truck } from 'lucide-react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { formatApiError, login } from '../lib/api';
+import type { User } from '../lib/models';
 
-export function Login({ onLogin }: { onLogin: (user: any) => void }) {
+type LoginSession = {
+  user: User;
+  token: string;
+};
+
+export function Login({ onLogin }: { onLogin: (session: LoginSession) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,28 +25,15 @@ export function Login({ onLogin }: { onLogin: (user: any) => void }) {
     setError('');
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-d5a6a6f2/auth/login`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+      const data = await login(email, password);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+      if (data.user.role !== 'admin') {
+        throw new Error('Only admin accounts can access this panel.');
       }
 
-      localStorage.setItem('admin_token', data.token);
-      onLogin(data.user);
-    } catch (err: any) {
-      setError(err.message || 'Failed to login. Please try again.');
+      onLogin(data);
+    } catch (err: unknown) {
+      setError(formatApiError(err));
       console.error('Login error:', err);
     } finally {
       setLoading(false);

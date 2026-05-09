@@ -10,6 +10,7 @@ import { ReportsAnalytics } from './dashboard/ReportsAnalytics';
 import { PromoManagement } from './dashboard/PromoManagement';
 import { DisputeManagement } from './dashboard/DisputeManagement';
 import { SystemConfiguration } from './dashboard/SystemConfiguration';
+import type { User } from '../lib/models';
 
 export type AdminView =
   | 'overview'
@@ -23,7 +24,7 @@ export type AdminView =
   | 'disputes'
   | 'settings';
 
-export function AdminDashboard({ adminUser, onLogout }: { adminUser: any; onLogout: () => void }) {
+export function AdminDashboard({ adminUser, onLogout }: { adminUser: User | null; onLogout: () => void }) {
   const [currentView, setCurrentView] = useState<AdminView>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 

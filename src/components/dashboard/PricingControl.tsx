@@ -1,87 +1,198 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { DollarSign, MapPin, TrendingUp, Save } from 'lucide-react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { Badge } from '../ui/badge';
+import { Alert, AlertDescription } from '../ui/alert';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
+import { DollarSign, Save, RefreshCw } from 'lucide-react';
+import { formatApiError, getPricingById, getPricingList, updatePricing } from '../../lib/api';
+import type { Pricing } from '../../lib/models';
+
+type PricingFormState = {
+  base_fare: string;
+  per_km_rate: string;
+  vehicle_multiplier: string;
+  surge_active: boolean;
+  surge_multiplier: string;
+  min_fare: string;
+  max_fare: string;
+};
+
+function formatDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'N/A';
+  }
+  return parsed.toLocaleString();
+}
+
+function toFormState(pricing: Pricing): PricingFormState {
+  return {
+    base_fare: String(pricing.base_fare),
+    per_km_rate: String(pricing.per_km_rate),
+    vehicle_multiplier: String(pricing.vehicle_multiplier),
+    surge_active: pricing.surge_active,
+    surge_multiplier: String(pricing.surge_multiplier),
+    min_fare: String(pricing.min_fare),
+    max_fare: pricing.max_fare === null ? '' : String(pricing.max_fare),
+  };
+}
+
+function parseNumber(value: string): number {
+  return Number(value);
+}
+
+function isValidNumber(value: string): boolean {
+  if (value.trim() === '') {
+    return false;
+  }
+
+  return Number.isFinite(Number(value));
+}
 
 export function PricingControl() {
-  const [baseFare, setBaseFare] = useState('5.00');
-  const [perKmRate, setPerKmRate] = useState('1.50');
-  const [serviceRadius, setServiceRadius] = useState('25');
-  const [surgeEnabled, setSurgeEnabled] = useState(false);
-  const [surgePeakHours, setSurgePeakHours] = useState('18:00-20:00');
-  const [surgeMultiplier, setSurgeMultiplier] = useState('1.5');
+  const [pricingList, setPricingList] = useState<Pricing[]>([]);
+  const [selectedPricing, setSelectedPricing] = useState<Pricing | null>(null);
+  const [formState, setFormState] = useState<PricingFormState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchPricingSettings();
+    void fetchPricingList();
   }, []);
 
-  const fetchPricingSettings = async () => {
+  const fetchPricingList = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-d5a6a6f2/pricing`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      setLoading(true);
+      setError('');
+      const list = await getPricingList();
+      setPricingList(list);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.baseFare) setBaseFare(data.baseFare);
-        if (data.perKmRate) setPerKmRate(data.perKmRate);
-        if (data.serviceRadius) setServiceRadius(data.serviceRadius);
-        if (data.surgeEnabled !== undefined) setSurgeEnabled(data.surgeEnabled);
-        if (data.surgePeakHours) setSurgePeakHours(data.surgePeakHours);
-        if (data.surgeMultiplier) setSurgeMultiplier(data.surgeMultiplier);
+      if (list.length === 0) {
+        setSelectedPricing(null);
+        setFormState(null);
+      } else {
+        const initialId = selectedPricing?.id || list[0].id;
+        await fetchPricingDetails(initialId);
       }
-    } catch (err) {
-      console.error('Error fetching pricing settings:', err);
+    } catch (err: unknown) {
+      setError(formatApiError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSavePricing = async () => {
-    setSaving(true);
+  const fetchPricingDetails = async (id: string) => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-d5a6a6f2/pricing`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            baseFare,
-            perKmRate,
-            serviceRadius,
-            surgeEnabled,
-            surgePeakHours,
-            surgeMultiplier,
-          }),
-        }
-      );
+      setError('');
+      const details = await getPricingById(id);
+      setSelectedPricing(details);
+      setFormState(toFormState(details));
+      setPricingList((prev) => prev.map((item) => (item.id === id ? details : item)));
+    } catch (err: unknown) {
+      setError(formatApiError(err));
+    }
+  };
 
-      if (response.ok) {
-        toast.success('Pricing settings saved successfully');
-      } else {
-        throw new Error('Failed to save pricing settings');
+  const hasChanges = useMemo(() => {
+    if (!selectedPricing || !formState) {
+      return false;
+    }
+
+    return (
+      selectedPricing.base_fare !== parseNumber(formState.base_fare) ||
+      selectedPricing.per_km_rate !== parseNumber(formState.per_km_rate) ||
+      selectedPricing.vehicle_multiplier !== parseNumber(formState.vehicle_multiplier) ||
+      selectedPricing.surge_active !== formState.surge_active ||
+      selectedPricing.surge_multiplier !== parseNumber(formState.surge_multiplier) ||
+      selectedPricing.min_fare !== parseNumber(formState.min_fare) ||
+      selectedPricing.max_fare !== (formState.max_fare.trim() === '' ? null : parseNumber(formState.max_fare))
+    );
+  }, [selectedPricing, formState]);
+
+  const handleSavePricing = async () => {
+    if (!selectedPricing || !formState) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError('');
+
+      if (
+        !isValidNumber(formState.base_fare) ||
+        !isValidNumber(formState.per_km_rate) ||
+        !isValidNumber(formState.vehicle_multiplier) ||
+        !isValidNumber(formState.surge_multiplier) ||
+        !isValidNumber(formState.min_fare)
+      ) {
+        setError('Please provide valid numeric values for all required pricing fields.');
+        return;
       }
-    } catch (err: any) {
-      console.error('Error saving pricing settings:', err);
-      toast.error(err.message || 'Failed to save pricing settings');
+
+      if (formState.max_fare.trim() !== '' && !isValidNumber(formState.max_fare)) {
+        setError('Max fare must be a valid number or left empty.');
+        return;
+      }
+
+      const payload: Partial<
+        Pick<
+          Pricing,
+          | 'base_fare'
+          | 'per_km_rate'
+          | 'vehicle_multiplier'
+          | 'surge_active'
+          | 'surge_multiplier'
+          | 'min_fare'
+          | 'max_fare'
+        >
+      > = {};
+
+      const parsedMaxFare = formState.max_fare.trim() === '' ? null : parseNumber(formState.max_fare);
+
+      if (selectedPricing.base_fare !== parseNumber(formState.base_fare)) {
+        payload.base_fare = parseNumber(formState.base_fare);
+      }
+      if (selectedPricing.per_km_rate !== parseNumber(formState.per_km_rate)) {
+        payload.per_km_rate = parseNumber(formState.per_km_rate);
+      }
+      if (selectedPricing.vehicle_multiplier !== parseNumber(formState.vehicle_multiplier)) {
+        payload.vehicle_multiplier = parseNumber(formState.vehicle_multiplier);
+      }
+      if (selectedPricing.surge_active !== formState.surge_active) {
+        payload.surge_active = formState.surge_active;
+      }
+      if (selectedPricing.surge_multiplier !== parseNumber(formState.surge_multiplier)) {
+        payload.surge_multiplier = parseNumber(formState.surge_multiplier);
+      }
+      if (selectedPricing.min_fare !== parseNumber(formState.min_fare)) {
+        payload.min_fare = parseNumber(formState.min_fare);
+      }
+      if (selectedPricing.max_fare !== parsedMaxFare) {
+        payload.max_fare = parsedMaxFare;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        return;
+      }
+
+      const updated = await updatePricing(selectedPricing.id, payload);
+      setSelectedPricing(updated);
+      setFormState(toFormState(updated));
+      setPricingList((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err: unknown) {
+      setError(formatApiError(err));
     } finally {
       setSaving(false);
     }
@@ -102,211 +213,175 @@ export function PricingControl() {
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-gray-900 mb-2">Pricing Control</h1>
-        <p className="text-gray-600">Manage base fare, rates, and surge pricing</p>
+        <p className="text-gray-600">Manage base fares and surge multipliers by pricing entry</p>
       </div>
 
-      <Tabs defaultValue="basic" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="basic">Basic Pricing</TabsTrigger>
-          <TabsTrigger value="surge">Surge Pricing</TabsTrigger>
-          <TabsTrigger value="zones">Service Zones</TabsTrigger>
-        </TabsList>
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        <TabsContent value="basic" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
-                Base Pricing Configuration
-              </CardTitle>
-              <CardDescription>Set the standard rates for delivery services</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="baseFare">Base Fare ($)</Label>
-                  <Input
-                    id="baseFare"
-                    type="number"
-                    step="0.50"
-                    value={baseFare}
-                    onChange={(e) => setBaseFare(e.target.value)}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Pricing Entries</CardTitle>
+                <CardDescription>Select an entry to edit</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={fetchPricingList}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vehicle</TableHead>
+                  <TableHead>Base Fare</TableHead>
+                  <TableHead>Per KM</TableHead>
+                  <TableHead>Surge</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pricingList.length > 0 ? (
+                  pricingList.map((entry) => (
+                    <TableRow
+                      key={entry.id}
+                      className={`cursor-pointer ${selectedPricing?.id === entry.id ? 'bg-indigo-50' : ''}`}
+                      onClick={() => fetchPricingDetails(entry.id)}
+                    >
+                      <TableCell>{entry.vehicle_type || 'Default'}</TableCell>
+                      <TableCell>{entry.base_fare}</TableCell>
+                      <TableCell>{entry.per_km_rate}</TableCell>
+                      <TableCell>
+                        <Badge variant={entry.surge_active ? 'default' : 'outline'}>
+                          {entry.surge_active ? 'Active' : 'Off'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                      No pricing entries found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5" />
+              Edit Pricing Entry
+            </CardTitle>
+            <CardDescription>
+              {selectedPricing
+                ? `Last updated: ${formatDate(selectedPricing.updated_at)}`
+                : 'Select a pricing entry to start editing'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {selectedPricing && formState ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="vehicleType">Vehicle Type</Label>
+                    <Input id="vehicleType" value={selectedPricing.vehicle_type || 'Default'} disabled />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="baseFare">Base Fare</Label>
+                    <Input
+                      id="baseFare"
+                      type="number"
+                      step="0.01"
+                      value={formState.base_fare}
+                      onChange={(e) => setFormState({ ...formState, base_fare: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="perKmRate">Per KM Rate</Label>
+                    <Input
+                      id="perKmRate"
+                      type="number"
+                      step="0.01"
+                      value={formState.per_km_rate}
+                      onChange={(e) => setFormState({ ...formState, per_km_rate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="vehicleMultiplier">Vehicle Multiplier</Label>
+                    <Input
+                      id="vehicleMultiplier"
+                      type="number"
+                      step="0.01"
+                      value={formState.vehicle_multiplier}
+                      onChange={(e) => setFormState({ ...formState, vehicle_multiplier: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="surgeMultiplier">Surge Multiplier</Label>
+                    <Input
+                      id="surgeMultiplier"
+                      type="number"
+                      step="0.01"
+                      value={formState.surge_multiplier}
+                      onChange={(e) => setFormState({ ...formState, surge_multiplier: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="minFare">Min Fare</Label>
+                    <Input
+                      id="minFare"
+                      type="number"
+                      step="0.01"
+                      value={formState.min_fare}
+                      onChange={(e) => setFormState({ ...formState, min_fare: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="maxFare">Max Fare</Label>
+                    <Input
+                      id="maxFare"
+                      type="number"
+                      step="0.01"
+                      value={formState.max_fare}
+                      onChange={(e) => setFormState({ ...formState, max_fare: e.target.value })}
+                      placeholder="Leave empty for no cap"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded">
+                  <div>
+                    <div className="font-medium">Enable Surge</div>
+                    <div className="text-sm text-gray-600">Use surge multiplier for this entry</div>
+                  </div>
+                  <Switch
+                    checked={formState.surge_active}
+                    onCheckedChange={(checked) => setFormState({ ...formState, surge_active: checked })}
                   />
-                  <p className="text-sm text-gray-500">Minimum charge for any delivery</p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="perKmRate">Per Kilometer Rate ($)</Label>
-                  <Input
-                    id="perKmRate"
-                    type="number"
-                    step="0.10"
-                    value={perKmRate}
-                    onChange={(e) => setPerKmRate(e.target.value)}
-                  />
-                  <p className="text-sm text-gray-500">Additional charge per kilometer</p>
+                <div className="flex justify-end">
+                  <Button onClick={handleSavePricing} disabled={saving || !hasChanges}>
+                    <Save className="w-4 h-4 mr-2" />
+                    {saving ? 'Saving...' : 'Save Pricing'}
+                  </Button>
                 </div>
-              </div>
-
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Price Calculation Example</h4>
-                <p className="text-blue-700">
-                  For a 10 km delivery: ${baseFare} + (10 × ${perKmRate}) = ${(parseFloat(baseFare) + 10 * parseFloat(perKmRate)).toFixed(2)}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Vehicle Type Pricing</CardTitle>
-              <CardDescription>Different rates for different vehicle types</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded">
-                  <div>
-                    <div className="font-medium">Motorcycle</div>
-                    <div className="text-sm text-gray-600">Standard delivery</div>
-                  </div>
-                  <Input type="number" className="w-32" defaultValue="1.00" step="0.10" />
-                </div>
-                <div className="flex items-center justify-between p-4 border rounded">
-                  <div>
-                    <div className="font-medium">Car</div>
-                    <div className="text-sm text-gray-600">Larger parcels</div>
-                  </div>
-                  <Input type="number" className="w-32" defaultValue="1.50" step="0.10" />
-                </div>
-                <div className="flex items-center justify-between p-4 border rounded">
-                  <div>
-                    <div className="font-medium">Van</div>
-                    <div className="text-sm text-gray-600">Bulk delivery</div>
-                  </div>
-                  <Input type="number" className="w-32" defaultValue="2.00" step="0.10" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="surge" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Surge Pricing Settings
-              </CardTitle>
-              <CardDescription>Configure peak-hour and demand-based pricing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded">
-                <div>
-                  <div className="font-medium">Enable Surge Pricing</div>
-                  <div className="text-sm text-gray-600">Automatically adjust prices during peak hours</div>
-                </div>
-                <Switch
-                  checked={surgeEnabled}
-                  onCheckedChange={setSurgeEnabled}
-                />
-              </div>
-
-              {surgeEnabled && (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="surgePeakHours">Peak Hours</Label>
-                      <Input
-                        id="surgePeakHours"
-                        value={surgePeakHours}
-                        onChange={(e) => setSurgePeakHours(e.target.value)}
-                        placeholder="e.g., 18:00-20:00"
-                      />
-                      <p className="text-sm text-gray-500">Define busy hours (24-hour format)</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="surgeMultiplier">Surge Multiplier</Label>
-                      <Input
-                        id="surgeMultiplier"
-                        type="number"
-                        step="0.1"
-                        value={surgeMultiplier}
-                        onChange={(e) => setSurgeMultiplier(e.target.value)}
-                      />
-                      <p className="text-sm text-gray-500">Price multiplier during peak hours</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-amber-50 p-4 rounded-lg">
-                    <h4 className="font-medium text-amber-900 mb-2">Surge Pricing Example</h4>
-                    <p className="text-amber-700">
-                      During peak hours ({surgePeakHours}), a normal ${baseFare} delivery becomes ${(parseFloat(baseFare) * parseFloat(surgeMultiplier)).toFixed(2)}
-                    </p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="zones" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
-                Service Zones & Radius
-              </CardTitle>
-              <CardDescription>Define delivery coverage areas</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="serviceRadius">Service Radius (km)</Label>
-                <Input
-                  id="serviceRadius"
-                  type="number"
-                  value={serviceRadius}
-                  onChange={(e) => setServiceRadius(e.target.value)}
-                />
-                <p className="text-sm text-gray-500">Maximum distance for deliveries from hub</p>
-              </div>
-
-              <div className="bg-gray-50 p-4 rounded">
-                <h4 className="font-medium mb-3">Custom Zone Pricing</h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-white rounded border">
-                    <div>
-                      <div className="font-medium">Downtown Area</div>
-                      <div className="text-sm text-gray-600">Higher traffic zone</div>
-                    </div>
-                    <Input type="number" className="w-32" defaultValue="2.00" step="0.10" />
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-white rounded border">
-                    <div>
-                      <div className="font-medium">Suburban Area</div>
-                      <div className="text-sm text-gray-600">Standard zone</div>
-                    </div>
-                    <Input type="number" className="w-32" defaultValue="1.50" step="0.10" />
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-white rounded border">
-                    <div>
-                      <div className="font-medium">Rural Area</div>
-                      <div className="text-sm text-gray-600">Extended delivery zone</div>
-                    </div>
-                    <Input type="number" className="w-32" defaultValue="2.50" step="0.10" />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <div className="flex justify-end mt-6">
-        <Button onClick={handleSavePricing} disabled={saving} size="lg">
-          <Save className="w-4 h-4 mr-2" />
-          {saving ? 'Saving...' : 'Save Pricing Settings'}
-        </Button>
+              </>
+            ) : (
+              <div className="text-gray-500">No pricing entry selected.</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

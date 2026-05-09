@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from './ui/button';
 import { AdminView } from './AdminDashboard';
+import type { User } from '../lib/models';
 import {
   LayoutDashboard,
   Users,
@@ -23,7 +24,7 @@ interface SidebarProps {
   onViewChange: (view: AdminView) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  adminUser: any;
+  adminUser: User | null;
   onLogout: () => void;
 }
 
